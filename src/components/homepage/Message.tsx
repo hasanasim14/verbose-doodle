@@ -1,96 +1,27 @@
 "use client";
 
 import type React from "react";
-import { useState, useRef, useEffect } from "react";
-import { Textarea } from "@/components/ui/textarea";
-import { setTempSessionID, getTempSessionID } from "@/lib/tempStore";
 import { ArrowUp, Clock } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
-import HomePage from "./Home";
-// import HomePage from "./home-page";
 
 type Message = {
   role: "user" | "assistant";
   content: string;
 };
 
-export default function Message({
-  onUrlDetected,
-}: {
-  onUrlDetected: (url: string) => void;
-}) {
+export default function Message() {
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [sessionid, setSessionid] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
-  const [showHomePage, setShowHomePage] = useState(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const prevMessagesLength = useRef(0);
-
-  const fetchExistingMessages = async (sessionId: string) => {
-    try {
-      const res = await fetch(
-        process.env.NEXT_PUBLIC_BASE_URL + "/chatHistory",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ sessionid: sessionId }),
-        }
-      );
-
-      if (!res.ok) throw new Error("API Not working");
-
-      const data = await res.json();
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const transformedMessages = data.map((msg: any) => ({
-        role: msg.type === "user" ? "user" : "assistant",
-        content: msg.content,
-      }));
-
-      if (transformedMessages.length > 0) {
-        setShowHomePage(false);
-      }
-
-      setMessages(transformedMessages);
-    } catch (error) {
-      console.error("Error", error);
-    }
-  };
-
-  useEffect(() => {
-    const sessionId = getTempSessionID();
-    if (sessionId) {
-      fetchExistingMessages(sessionId);
-    }
-  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-
-    if (messages.length > prevMessagesLength.current) {
-      const newMessages = messages.slice(prevMessagesLength.current);
-      newMessages.forEach((msg) => {
-        if (msg.role === "assistant") {
-          const urlRegex =
-            /(?:https?:\/\/[^\s]+)|(?:\[([^\]]+)\]$$(https?:\/\/[^\s)]+)$$)/g;
-          let match;
-
-          while ((match = urlRegex.exec(msg.content)) !== null) {
-            const url = match[2] || match[0];
-            if (url && onUrlDetected) {
-              onUrlDetected(url);
-            }
-          }
-        }
-      });
-    }
-
-    // Update the previous messages length
-    prevMessagesLength.current = messages.length;
-  }, [messages, onUrlDetected]);
+  }, [messages]);
 
   // Save cursor position
   useEffect(() => {
@@ -99,12 +30,10 @@ export default function Message({
     }
   }, [isLoading]);
 
-  const sendMessage = async (customMessage?: string) => {
-    const userQuery = customMessage || message.trim();
+  const sendMessage = async () => {
+    if (!message.trim() || isLoading) return;
 
-    if (!userQuery || isLoading) return;
-
-    setShowHomePage(false);
+    const userQuery = message.trim();
     setMessages((prev) => [...prev, { role: "user", content: userQuery }]);
     setMessage("");
     setIsLoading(true);
@@ -114,14 +43,14 @@ export default function Message({
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
     try {
-      const res = await fetch(process.env.NEXT_PUBLIC_BASE_URL + "/agent", {
+      const res = await fetch("/agent", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           query: userQuery,
-          sessionid: getTempSessionID(),
+          sessionid: sessionid,
         }),
         signal: controller.signal,
       });
@@ -131,7 +60,7 @@ export default function Message({
       const data = await res.json();
 
       if (data.data?.sessionID) {
-        setTempSessionID(data?.data?.sessionID);
+        setSessionid(data.data.sessionID);
       }
 
       // Add assistant response to chat
@@ -167,10 +96,6 @@ export default function Message({
     }
   };
 
-  const handleCardClick = (content: string) => {
-    sendMessage(content);
-  };
-
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -182,11 +107,15 @@ export default function Message({
         </div>
       </div>
 
-      {/* Chat area */}
+      {/* Chat area*/}
       <div className="flex-1 overflow-y-auto bg-white">
         <div className="p-4">
-          {showHomePage && messages.length === 0 ? (
-            <HomePage onCardClick={handleCardClick} />
+          {messages.length === 0 ? (
+            <div className="text-center text-gray-600 my-8">
+              <p className="text-s">
+                Ask us anything. We&apos;re here to help :)
+              </p>
+            </div>
           ) : (
             <div className="space-y-4">
               {messages.map((msg, index) => (
@@ -273,7 +202,7 @@ export default function Message({
       </div>
 
       {/* Message input */}
-      <div className="px-4 py-3 border-t bg-white">
+      <div className="px-4 pt-2 border-t bg-white">
         <div className="bg-gray-100 rounded-3xl p-2 border border-gray-300">
           <div className="flex items-center">
             <Textarea
@@ -287,26 +216,14 @@ export default function Message({
               disabled={isLoading}
             />
             <button
-              onClick={() => sendMessage()}
+              onClick={sendMessage}
               disabled={isLoading || !message.trim()}
-              className={`ml-2 rounded-full p-2 cursor-pointer disabled:opacity-50 ${
-                message.trim()
-                  ? "bg-[#f46117] hover:bg-[#e05615]"
-                  : "bg-gray-200 hover:bg-gray-300"
-              }`}
+              className="ml-2 bg-gray-200 rounded-full p-2 hover:bg-gray-300 cursor-pointer disabled:opacity-50"
             >
               {isLoading ? (
-                <Clock
-                  className={`h-5 w-5 ${
-                    message.trim() ? "text-white" : "text-gray-500"
-                  }`}
-                />
+                <Clock className="h-5 w-5 text-gray-500" />
               ) : (
-                <ArrowUp
-                  className={`h-5 w-5 ${
-                    message.trim() ? "text-white" : "text-gray-500"
-                  }`}
-                />
+                <ArrowUp className="h-5 w-5 text-gray-500" />
               )}
             </button>
           </div>

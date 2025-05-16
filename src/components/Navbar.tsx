@@ -48,7 +48,7 @@ export function Navbar() {
           {/* Logo */}
           <Link href="/" className="z-50 relative group">
             <Image
-              src="/m&p.png"
+              src="/logo.jpg"
               alt="Logo"
               width={400}
               height={600}
